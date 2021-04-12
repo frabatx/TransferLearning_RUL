@@ -1,0 +1,14 @@
+version: "3.0"
+services:
+  datascience-notebook:
+      build:
+        context: .
+        dockerfile: Dockerfile
+      working_dir: /home/$USER 
+      environment:
+        - JUPYTER_TOKEN=hi
+      volumes:
+        - $PWD/work:/home/$USER/work
+      ports:
+        - 5678:8888
+      container_name: internship
