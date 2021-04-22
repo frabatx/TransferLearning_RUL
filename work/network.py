@@ -31,6 +31,7 @@ import tensorflow.keras.backend as K
 from tensorflow.keras import backend
 from tensorflow.keras import optimizers
 from tensorflow.keras.models import Sequential, load_model, Model
+from tensorflow.keras.applications.vgg16 import VGG16
 from tensorflow.keras.layers import Input, Dense, Flatten, Dropout, Embedding
 from tensorflow.keras.layers import BatchNormalization, Activation, LSTM, TimeDistributed
 from tensorflow.keras.layers import Conv1D
@@ -40,6 +41,33 @@ from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint
 
 np.random.seed(0)
 tf.random.set_seed(0)
+
+
+# def gen_net():
+#     '''
+#     TODO: Generate and evaluate any CNN instead of MLPs
+#     :param vec_len:
+#     :param num_hidden1:
+#     :param num_hidden2:
+#     :return:
+#     '''
+
+
+#     # input_shape deve essere 30x30, cioé la grandezza dell'immagine di training che abbiamo
+#     # il parametro include_top parametrizzato a false indica che non verrá caricato l'ultimo layer
+#     vgg = VGG16(input_shape=[30,30,3], weights = 'imagenet', include_top = False)
+
+#     # Passaggio fondamentale é non trainare i pesi esistenti in vgg
+#     for layer in vgg.layers:
+#         layer.trainable = False
+
+
+#     base_outputs = vgg.output
+#     final_outputs = Dense(1)(base_outputs)
+#     new_model = Model(inputs = vgg, outputs = final_outputs) 
+#     new_model.summary()
+
+#     return new_model
 
 
 def gen_net(vec_len, num_hidden1, num_hidden2 ):
@@ -57,7 +85,6 @@ def gen_net(vec_len, num_hidden1, num_hidden2 ):
     model.add(Dense(1))
 
     return model
-
 
 class network_fit(object):
     '''
@@ -81,7 +108,8 @@ class network_fit(object):
         self.model_path = model_path
         self.verbose = verbose
 
-        self.mlps = gen_net(self.train_samples.shape[1], self.n_hidden1, self.n_hidden2)
+        # self.mlps = gen_net(self.train_samples.shape[1], self.n_hidden1, self.n_hidden2)
+        self.mlps = gen_net()
 
 
 
@@ -102,7 +130,7 @@ class network_fit(object):
         keras_rmse = tf.keras.metrics.RootMeanSquaredError()
         self.mlps.compile(loss='mean_squared_error', optimizer=sgd_m, metrics=[keras_rmse, 'mae'])
 
-        # print(self.mlps.summary())
+        print(self.mlps.summary())
 
         # Train the model
         history = self.mlps.fit(self.train_samples, self.label_array_train, epochs=epochs, batch_size=batch_size,

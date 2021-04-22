@@ -4,11 +4,11 @@ services:
       build:
         context: .
         dockerfile: Dockerfile
-      working_dir: /home/$USER 
+      working_dir: /tf
       environment:
         - JUPYTER_TOKEN=hi
       volumes:
-        - $PWD/work:/home/$USER/work
+        - $PWD/work:/tf/work
       ports:
         - 5678:8888
       container_name: internship
