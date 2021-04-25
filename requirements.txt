@@ -4,4 +4,5 @@ matplotlib
 seaborn
 sklearn
 opencv-python
+tensorflow-gpu
 

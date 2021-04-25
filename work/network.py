@@ -108,8 +108,8 @@ class network_fit(object):
         self.model_path = model_path
         self.verbose = verbose
 
-        # self.mlps = gen_net(self.train_samples.shape[1], self.n_hidden1, self.n_hidden2)
-        self.mlps = gen_net()
+        self.mlps = gen_net(self.train_samples.shape[1], self.n_hidden1, self.n_hidden2)
+        #self.mlps = gen_net()
 
 
 
