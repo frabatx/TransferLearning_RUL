@@ -4,6 +4,11 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    deploy:
+      resources:
+        reservations:
+          devices:
+          - capabilities: [gpu]
     working_dir: /tf
     environment:
       - JUPYTER_TOKEN=hi

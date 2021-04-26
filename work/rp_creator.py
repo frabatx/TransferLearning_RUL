@@ -2,6 +2,7 @@
 Created on April , 2021
 @author:
 '''
+import time
 import logging
 import pandas as pd
 import numpy as np
@@ -9,6 +10,10 @@ import joblib
 import matplotlib.pyplot as plt
 from pyts.image import RecurrencePlot
 from sklearn import preprocessing
+import cv2
+import io
+from PIL import Image
+from numba import jit, cuda
 # from sklearn.decomposition import PCA
 # from pyts.approximation import SymbolicFourierApproximation
 
@@ -38,6 +43,57 @@ def gen_labels(id_df, seq_length, label):
     # All the next id's sequences will have associated step by step one label as target.
     return data_matrix[seq_length:num_elements, :]
 
+def change_format(X_rp):
+    """
+    Takes 14 sensors array (32x32) and reshapes into 1 array(128x128)
+    """
+    # 1- Create two dummy zero arrays with np.zeros(32,32)
+    temp = np.zeros((64,32))
+    # 2- Concatenate all 16 arrays
+    for i in range(len(X_rp)):
+        x = X_rp[i]
+        temp = np.concatenate((temp,x), axis=0)
+
+    # 3- Reshape the concatenated arrays to (128,128)
+    new_train0 = temp.reshape(128,128)
+    # 4- Extract RGB channels with cv2.split(img)
+    my_dpi = 96
+    array_size = 128
+    fig = plt.figure(figsize=(array_size/my_dpi, array_size/my_dpi), dpi=my_dpi, frameon=False)
+    ax = plt.Axes(fig, [0., 0., 1., 1.])
+    ax.set_axis_off()
+    fig.add_axes(ax)
+    ## Drawing image
+    ax.imshow(new_train0)
+    fig.savefig('img1.png', dpi = my_dpi)
+    img = cv2.imread('img1.png')
+    plt.close(fig)
+    
+    return np.asarray(cv2.split(img))
+
+def timer(start,end):
+    """
+    Print time in HH:mm:ss format
+    """
+    hours, rem = divmod(end-start, 3600)
+    minutes, seconds = divmod(rem, 60)
+    print("{:0>2}:{:0>2}:{:05.2f}".format(int(hours),int(minutes),seconds))
+
+def format_samples(train_samples, test_samples):
+    """
+    Format training and test sets (n_samples, image_size, channels)
+    """
+    start = time.time()
+    resh_train = np.asarray([change_format(rp) for rp in train_samples])
+    end = time.time()
+    print("Reshape train time: ")
+    timer(start,end)
+    start = time.time()
+    resh_test = np.asarray([change_format(rp) for rp in test_samples])
+    end = time.time()
+    print("Reshape test time: ")
+    timer(start,end)
+    return resh_train, resh_test
 
 
 class input_gen(object):

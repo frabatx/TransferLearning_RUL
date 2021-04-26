@@ -32,6 +32,7 @@ from tensorflow.keras import backend
 from tensorflow.keras import optimizers
 from tensorflow.keras.models import Sequential, load_model, Model
 from tensorflow.keras.applications.vgg16 import VGG16
+from tensorflow.keras.applications.inception_v3 import InceptionV3
 from tensorflow.keras.layers import Input, Dense, Flatten, Dropout, Embedding
 from tensorflow.keras.layers import BatchNormalization, Activation, LSTM, TimeDistributed
 from tensorflow.keras.layers import Conv1D
@@ -43,31 +44,38 @@ np.random.seed(0)
 tf.random.set_seed(0)
 
 
-# def gen_net():
-#     '''
-#     TODO: Generate and evaluate any CNN instead of MLPs
-#     :param vec_len:
-#     :param num_hidden1:
-#     :param num_hidden2:
-#     :return:
-#     '''
+def gen_cnn(model_name, input_shape = (128,128,3)):
+    '''
+    Generate CNN.
+    :param input_shape: tuple of 3 shapes
+    :param model: name of model. Implemented models:
+                1) VGG = vgg
+                2) InceptionV3 = inception
+    :return:
+    '''
 
+    if(model_name == "vgg"):
+        model = VGG16(
+            input_shape=input_shape, 
+            weights = 'imagenet', 
+            include_top = False)
+    if(model_name == "inception"):
+        model = InceptionV3(
+            input_shape=input_shape, 
+            weights = 'imagenet', 
+            include_top = False)
+        
+    # Not train model weights
+    for layer in model.layers:
+        layer.trainable = False
 
-#     # input_shape deve essere 30x30, cioé la grandezza dell'immagine di training che abbiamo
-#     # il parametro include_top parametrizzato a false indica che non verrá caricato l'ultimo layer
-#     vgg = VGG16(input_shape=[30,30,3], weights = 'imagenet', include_top = False)
+    
+    base_outputs = model.output
+    flatten_outputs = Flatten()(base_outputs)
+    final_outputs = Dense(1)(flatten_outputs)
+    new_model = Model(inputs = model.input, outputs = final_outputs)
 
-#     # Passaggio fondamentale é non trainare i pesi esistenti in vgg
-#     for layer in vgg.layers:
-#         layer.trainable = False
-
-
-#     base_outputs = vgg.output
-#     final_outputs = Dense(1)(base_outputs)
-#     new_model = Model(inputs = vgg, outputs = final_outputs) 
-#     new_model.summary()
-
-#     return new_model
+    return new_model
 
 
 def gen_net(vec_len, num_hidden1, num_hidden2 ):
@@ -92,7 +100,7 @@ class network_fit(object):
     '''
 
     def __init__(self, train_samples, label_array_train, test_samples, label_array_test,
-                 model_path, n_hidden1 =100, n_hidden2 =10, verbose=1):
+                 model_path, n_hidden1 =100, n_hidden2 =10, verbose=0 , model_name = ""):
         '''
         Constructor
         Generate a NN and train
@@ -108,12 +116,14 @@ class network_fit(object):
         self.model_path = model_path
         self.verbose = verbose
 
-        self.mlps = gen_net(self.train_samples.shape[1], self.n_hidden1, self.n_hidden2)
-        #self.mlps = gen_net()
+        if(model_name != ""):
+            self.mlps = gen_cnn(model_name=model_name)
+        else:
+            self.mlps = gen_net(self.train_samples.shape[1], self.n_hidden1, self.n_hidden2)
 
 
 
-    def train_net(self, epochs = 1000, batch_size= 700, lr= 1e-05, plotting=True):
+    def train_net(self, epochs = 1000, batch_size= 3, lr= 1e-05, plotting=False):
         '''
         specify the optimizers and train the network
         :param epochs:
@@ -128,24 +138,20 @@ class network_fit(object):
         sgd_m = optimizers.SGD(learning_rate=lr)
 
         keras_rmse = tf.keras.metrics.RootMeanSquaredError()
-        self.mlps.compile(loss='mean_squared_error', optimizer=sgd_m, metrics=[keras_rmse, 'mae'])
+        self.mlps.compile(loss='mean_squared_error', optimizer=adm, metrics=[keras_rmse, 'mae'])
 
         print(self.mlps.summary())
 
         # Train the model
         history = self.mlps.fit(self.train_samples, self.label_array_train, epochs=epochs, batch_size=batch_size,
-                                validation_split=0.2, verbose=self.verbose,
-                                callbacks=[
-                               EarlyStopping(monitor='val_root_mean_squared_error', min_delta=0, patience=50, verbose=self.verbose, mode='min'),
-                               ModelCheckpoint(self.model_path, monitor='val_root_mean_squared_error', save_best_only=True, mode='min',
-                                               verbose=self.verbose)])
+                                validation_split=0.2, verbose=self.verbose)
 
-        val_rmse_k = history.history['val_root_mean_squared_error']
-        val_rmse_min = min(val_rmse_k)
-        min_val_rmse_idx = val_rmse_k.index(min(val_rmse_k))
-        stop_epoch = min_val_rmse_idx +1
-        val_rmse_min = round(val_rmse_min, 4)
-        print ("val_rmse_min: ", val_rmse_min)
+        # val_rmse_k = history.history['val_root_mean_squared_error']
+        # val_rmse_min = min(val_rmse_k)
+        # min_val_rmse_idx = val_rmse_k.index(min(val_rmse_k))
+        # stop_epoch = min_val_rmse_idx +1
+        # val_rmse_min = round(val_rmse_min, 4)
+        # print ("val_rmse_min: ", val_rmse_min)
 
         trained_net = self.mlps
 

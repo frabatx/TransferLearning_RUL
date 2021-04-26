@@ -44,7 +44,7 @@ import warnings
 warnings.simplefilter('ignore', category=NumbaDeprecationWarning)
 warnings.simplefilter('ignore', category=NumbaPendingDeprecationWarning)
 
-
+#tf.debugging.set_log_device_placement(True)
 # Ignore tf err log
 pd.options.mode.chained_assignment = None  # default='warn'
 tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)

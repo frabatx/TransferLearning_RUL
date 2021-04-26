@@ -29,8 +29,17 @@ from sklearn import pipeline
 from sklearn.metrics import mean_squared_error
 from math import sqrt
 
-from rp_creator import input_gen
+from rp_creator import input_gen, format_samples
 from network import network_fit
+
+from PIL import Image
+from numba import jit, cuda
+
+from numba import NumbaDeprecationWarning, NumbaPendingDeprecationWarning
+import warnings
+
+warnings.simplefilter('ignore', category=NumbaDeprecationWarning)
+warnings.simplefilter('ignore', category=NumbaPendingDeprecationWarning)
 
 # Ignore tf err log
 pd.options.mode.chained_assignment = None  # default='warn'
@@ -121,9 +130,10 @@ def main():
     parser.add_argument('--n_hidden2', type=int, default=10, required=False,
                         help='number of neurons in the second hidden layer')
     parser.add_argument('--epochs', type=int, default=1000, required=False, help='number epochs for network training')
-    parser.add_argument('--batch', type=int, default=700, required=False, help='batch size of BPTT training')
+    parser.add_argument('--batch', type=int, default=3, required=False, help='batch size of BPTT training')
     parser.add_argument('--verbose', type=int, default=2, required=False, help='Verbose TF training')
     parser.add_argument('--device', type=str, default='cpu', help='Device to run model on cpu or cuda.')
+    parser.add_argument('--model', type=str, default = '', help='Name of model. NN as default', required=True)
 
     args = parser.parse_args()
 
@@ -140,6 +150,8 @@ def main():
     epochs = args.epochs
     batch = args.batch
     verbose = args.verbose
+    model_name = args.model
+    print(model_name)
 
     flatten = args.flatten
     if flatten == 'yes':
@@ -171,25 +183,35 @@ def main():
             thres_percentage=thres_value,
             flatten=flatten,
             visualize=visualize)
+        print ("Format samples: ")
+        train, test = format_samples(train_samples, test_samples)
 
     elif method == 'jrp': # please implement any method if needed
         pass
 
-
-    print ("train_samples.shape: ", train_samples.shape) # shape = (samples, sensors, height, width)
+    
+    print ("train_samples.shape: ", train.shape) # shape = (samples, channels, height, width)
     print ("label_array_train.shape: ", label_array_train.shape) # shape = (samples, label)
-    print ("test_samples.shape: ", test_samples.shape) # shape = (samples, sensors, height, width)
+    print ("test_samples.shape: ", test.shape) # shape = (samples, channels, height, width)
     print ("label_array_test.shape: ", label_array_test.shape) # shape = (samples, ground truth)
 
-    train_samples, test_samples = concat_vec(train_samples, test_samples)
+    train = np.transpose(train, (0,2,3,1))
+    test = np.transpose(test, (0,2,3,1))
 
-    print ("train_samples.shape: ", train_samples.shape) # shape = (samples, sensors, height, width)
+    print ("train_samples.shape: ", train.shape) # shape = (samples, height, width, channels)
     print ("label_array_train.shape: ", label_array_train.shape) # shape = (samples, label)
-    print ("test_samples.shape: ", test_samples.shape) # shape = (samples, sensors, height, width)
+    print ("test_samples.shape: ", test.shape) # shape = (samples, height, width, channels)
     print ("label_array_test.shape: ", label_array_test.shape) # shape = (samples, ground truth)
 
-    mlps_net = network_fit(train_samples, label_array_train, test_samples, label_array_test,
-                           model_path = model_path, n_hidden1=n_hidden1, n_hidden2=n_hidden2, verbose=verbose)
+    print ("Training model: ")
+    mlps_net = network_fit(train, label_array_train, 
+                            test, label_array_test,
+                            model_path = model_path, 
+                            n_hidden1=n_hidden1, 
+                            n_hidden2=n_hidden2, 
+                            verbose=verbose,
+                            model_name= model_name)
+
 
     trained_net = mlps_net.train_net(epochs=epochs, batch_size=batch)
     rms, score = mlps_net.test_net(trained_net)
