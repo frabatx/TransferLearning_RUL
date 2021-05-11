@@ -2,7 +2,6 @@
 Created on April , 2021
 @author:
 '''
-
 ## Import libraries in python
 import argparse
 import time
@@ -17,6 +16,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import random
 import importlib
+from itertools import repeat
 from scipy.stats import randint, expon, uniform
 
 import tensorflow as tf
@@ -28,30 +28,27 @@ from sklearn import preprocessing
 from sklearn import pipeline
 from sklearn.metrics import mean_squared_error
 from math import sqrt
-
-from rp_creator import input_gen, format_samples
-from network import network_fit
-
+import cv2
+import io
 from PIL import Image
 from numba import jit, cuda
-
-from numba import NumbaDeprecationWarning, NumbaPendingDeprecationWarning
-import warnings
-
-warnings.simplefilter('ignore', category=NumbaDeprecationWarning)
-warnings.simplefilter('ignore', category=NumbaPendingDeprecationWarning)
+from step2Network import network_fit
 
 # Ignore tf err log
 pd.options.mode.chained_assignment = None  # default='warn'
 tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
 tf.get_logger().setLevel(logging.ERROR)
 
+gpus = tf.config.experimental.list_physical_devices('GPU')
+tf.config.experimental.set_memory_growth(gpus[0], True)
+
 # random seed predictable
 seed = 0
 random.seed(seed)
 np.random.seed(seed)
 
-current_dir = os.path.dirname(os.path.abspath(__file__))
+# Path settings
+current_dir = '.'#os.path.dirname(os.path.abspath(__file__))
 
 ## Dataset path
 train_FD001_path = current_dir +'/cmapss/train_FD001.csv'
@@ -86,38 +83,11 @@ dp_str = ["none", "FD001", "FD002", "FD003", "FD004"]
 ## temporary model path for NN
 model_path = current_dir +'/temp_net.h5'
 
-
-def concat_vec(train_samples, test_samples):
-    '''
-    concatenate vectors for MLPs (this is not to be used for the case of CNN which allows 2D input)
-    :param train_samples:
-    :param test_samples:
-    :return:
-    '''
-    # flatten 2D rp to 1D vector and concatenate all vectors.
-    if len(train_samples.shape)==4:
-        train_vec_samples = train_samples.reshape(train_samples.shape[0],
-                                                  train_samples.shape[1]*train_samples.shape[2]*train_samples.shape[3])
-        test_vec_samples = test_samples.reshape(test_samples.shape[0],
-                                                  test_samples.shape[1]*test_samples.shape[2]*test_samples.shape[3])
-
-    # concatenate all the flattened vectors. ( if 2D rps are already flattened)
-    elif len(train_samples.shape)==3:
-        train_vec_samples = train_samples.reshape(train_samples.shape[0],
-                                                  train_samples.shape[1]*train_samples.shape[2])
-        test_vec_samples = test_samples.reshape(test_samples.shape[0],
-                                                  test_samples.shape[1]*test_samples.shape[2])
-
-
-    return train_vec_samples, test_vec_samples
-
-
-
 def main():
     # current_dir = os.path.dirname(os.path.abspath(__file__))
     parser = argparse.ArgumentParser(description='RPs creator')
     parser.add_argument('-i', type=int, help='Input sources', required=True)
-    parser.add_argument('-l', type=int, default=10, help='sequence length')
+    parser.add_argument('-l', type=int, default=32, help='sequence length')
     parser.add_argument('--method', type=str, default='rps', help='data representation: rps')
     parser.add_argument('--thres_type', type=str, default=None, required=False,
                         help='threshold type for RPs: distance or point ')
@@ -130,8 +100,8 @@ def main():
     parser.add_argument('--n_hidden2', type=int, default=10, required=False,
                         help='number of neurons in the second hidden layer')
     parser.add_argument('--epochs', type=int, default=1000, required=False, help='number epochs for network training')
-    parser.add_argument('--batch', type=int, default=3, required=False, help='batch size of BPTT training')
-    parser.add_argument('--verbose', type=int, default=2, required=False, help='Verbose TF training')
+    parser.add_argument('--batch', type=int, default=200, required=False, help='batch size of BPTT training')
+    parser.add_argument('--verbose', type=int, default=1, required=False, help='Verbose TF training')
     parser.add_argument('--device', type=str, default='cpu', required=False, help='Device to run model on cpu or cuda.')
     parser.add_argument('--model', type=str, default = '', required=False, help='Name of model. NN as default')
 
@@ -151,69 +121,59 @@ def main():
     batch = args.batch
     verbose = args.verbose
     model_name = args.model
-    print(model_name)
+    flatten = False
+    visualize = False
 
-    flatten = args.flatten
-    if flatten == 'yes':
-        flatten = True
-    elif flatten == 'no':
-        flatten = False
+    print("Sequence-lenght: " + str(sequence_length))
+    print("thres_type: " + str(thres_type))
+    print("thres_value: " + str(thres_value))
+    print("device: " + str(device))
+    print("method: " + str(method))
+    print("epochs: " + str(epochs))
+    print("batch: " + str(batch))
+    print("verbose: " + str(verbose))
 
-    visualize = args.visualize
-    if visualize == 'yes':
-        visualize = True
-    elif visualize == 'no':
-        visualize = False
-
+    # Architecture preferences
+    # dp = FD_path[1]
+    # subdataset = dp_str[1]
+    # sequence_length = 32
+    # thres_type = None
+    # thres_value = 50
+    # device = 'cpu'
+    # method = 'rps'
+    # epochs = 1000
+    # batch = 200
+    # verbose = 1
 
     # Sensors not to be considered (those that do not disclose any pattern in their ts)
     sensor_drop = ['sensor_01', 'sensor_05', 'sensor_06', 'sensor_10', 'sensor_16', 'sensor_18', 'sensor_19']
 
     start = time.time()
 
-    print("Dataset: ", subdataset)
-    print("Seq_len: ", sequence_length)
-
-    """ Creates a new instance of the training-validation task and computes the fitness of the current individual """
-    data_class = input_gen(data_path_list=dp, sequence_length=sequence_length, sensor_drop= sensor_drop, visualize=visualize)
-
-    if method == 'rps':
-        train_samples, label_array_train, test_samples, label_array_test = data_class.rps(
-            thres_type=thres_type,
-            thres_percentage=thres_value,
-            flatten=flatten,
-            visualize=visualize)
-        print ("Format samples: ")
-        train, test = format_samples(train_samples, test_samples)
-
-    elif method == 'jrp': # please implement any method if needed
-        pass
-
-    
-    print ("train_samples.shape: ", train.shape) # shape = (samples, channels, height, width)
-    print ("label_array_train.shape: ", label_array_train.shape) # shape = (samples, label)
-    print ("test_samples.shape: ", test.shape) # shape = (samples, channels, height, width)
-    print ("label_array_test.shape: ", label_array_test.shape) # shape = (samples, ground truth)
-
-    train = np.transpose(train, (0,2,3,1))
-    test = np.transpose(test, (0,2,3,1))
-
-    print ("train_samples.shape: ", train.shape) # shape = (samples, height, width, channels)
-    print ("label_array_train.shape: ", label_array_train.shape) # shape = (samples, label)
-    print ("test_samples.shape: ", test.shape) # shape = (samples, height, width, channels)
-    print ("label_array_test.shape: ", label_array_test.shape) # shape = (samples, ground truth)
-
-    print ("Training model: ")
-    mlps_net = network_fit(train, label_array_train, 
-                            test, label_array_test,
-                            model_path = model_path, 
-                            n_hidden1=n_hidden1, 
-                            n_hidden2=n_hidden2, 
-                            verbose=verbose,
-                            model_name= model_name)
+   
+    # Import training and test 
+    train_samples = np.load('preprocess/train_samples.npy')
+    test_samples = np.load('preprocess/test_samples.npy')
+    label_array_train = np.load('preprocess/label_array_train.npy')
+    label_array_test = np.load('preprocess/label_array_test.npy')
 
 
+    # Creo l'oggetto net
+    mlps_net = network_fit(train_samples, 
+                        label_array_train, 
+                        test_samples, 
+                        label_array_test,
+                        model_path = model_path, 
+                        model_name = "vgg",
+                        weights = False,
+                        freeze = False,
+                        verbose=verbose)
+
+
+    #Train
     trained_net = mlps_net.train_net(epochs=epochs, batch_size=batch)
+    
+    # Test
     rms, score = mlps_net.test_net(trained_net)
 
 
